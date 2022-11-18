@@ -58,7 +58,7 @@ class CNN(nn.Module):
             stride=(2,2)
         )
 
-        # First fully conntected layer
+        # First fully connected layer
         self.full_connect1 = nn.Linear(15488, 4608)
         self.initalise_layer(self.full_connect1)
 
