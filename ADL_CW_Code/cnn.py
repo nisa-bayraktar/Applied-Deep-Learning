@@ -80,11 +80,13 @@ class CNN(nn.Module):
     #computes the forward pass through all network layers
     def forward(self, audios: torch.Tensor) -> torch.Tensor:
         x = self.conv1(audios)
-        x = F.LeakyReLu(x,0.3)
+        xRelu = F.LeakyReLu(0.3)
+        x = xRelu(x)
         x = self.max_pool1(x)
         # second convolution pipeline
         xb = self.conv1b(audios)
-        xb = F.LeakyReLu(xb,0.3)
+        xbRelu = F.LeakyReLu(0.3)
+        xb = xbRelu(xb)
         xb = self.max_pool2(xb)
         x = torch.flatten(x, start_dim=1)
         xb = torch.flatten(xb,start_dim=1)
