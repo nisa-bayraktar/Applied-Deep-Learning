@@ -37,38 +37,6 @@ class CNN(nn.Module):
             stride=(2,2)
         )
 
-        # # Second convolution layer
-        # self.conv2 = nn.Conv2d(
-        #     in_channels=self.conv1.out_channels,
-        #     out_channels=64,
-        #     kernel_size=(3,3),
-        #     padding=(1,1)
-        # )
-        # # Initialse the layer weights and bias
-        # self.initalise_layer(self.conv2)
-
-        # # Second max pooling layer (after second convolution)
-        # self.max_pool2 = nn.MaxPool2d(
-        #     kernel_size=(3,3),
-        #     stride=(2,2)
-        # )
-
-        # # Third convolution layer
-        # self.conv3 = nn.Conv2d(
-        #     in_channels=self.conv2.out_channels,
-        #     out_channels=128,
-        #     kernel_size=(3,3),
-        #     padding=(1,1)
-        # )
-        # # Initialse the layer weights and bias
-        # self.initalise_layer(self.conv3)
-
-        # # Third max pooling layer (after third convolution)
-        # self.max_pool3 = nn.MaxPool2d(
-        #     kernel_size=(3,3),
-        #     stride=(2,2)
-        # )
-
         # First fully connected layer
         self.full_connect1 = nn.Linear(320, 5120)
         self.initalise_layer(self.full_connect1)
@@ -80,13 +48,12 @@ class CNN(nn.Module):
     #computes the forward pass through all network layers
     def forward(self, audios: torch.Tensor) -> torch.Tensor:
         x = self.conv1(audios)
-        xRelu = F.LeakyReLu(0.3)
-        x = xRelu(x)
+        x = F.leaky_relu(x, 0.3)
         x = self.max_pool1(x)
         # second convolution pipeline
         xb = self.conv1b(audios)
-        xbRelu = F.LeakyReLu(0.3)
-        xb = xbRelu(xb)
+        xbRelu = F.leaky_relu(0.3)
+        xb = F.leaky_relu(xb,0.3)
         xb = self.max_pool2(xb)
         x = torch.flatten(x, start_dim=1)
         xb = torch.flatten(xb,start_dim=1)
