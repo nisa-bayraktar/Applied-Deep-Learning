@@ -59,7 +59,7 @@ def main(args):
     )
 
     #initialise model with correct size
-    model = CNN(height=96, width=96, channels=3)
+    model = CNN(height=80, width=80, channels=1)
     #set loss function
     criterion = nn.L1Loss()
     #criterion = nn.MSELoss() //Old loss function
