@@ -5,7 +5,7 @@ from audioshape import AudioShape
 
 # Potential Improvement: Batch normalisation?
 class CNN(nn.Module):
-    def __init__(self, height: int, width: int, channels: int):
+    def __init__(self, height: int, width: int, channels: int, class_count=int):
         super().__init__()
         # Input audio
         self.input_shape = AudioShape(height=height, width=width, channels=channels)
@@ -23,7 +23,6 @@ class CNN(nn.Module):
         # First max pooling layer (after first convolution)
         self.max_pool1 = nn.MaxPool2d(
             kernel_size=(1, 20),
-            stride=(2,2)
         )
 
         self.conv1b = nn.Conv2d(
@@ -32,40 +31,64 @@ class CNN(nn.Module):
             kernel_size=(21,20),
             padding='same'
         )
+
+        self.initalise_layer(self.conv1b)
+
         self.max_pool1b = nn.MaxPool2d(
-            kernel_size=(20, 21),
-            stride=(2,2)
+            kernel_size=(20, 1),
         )
 
         # First fully connected layer
-        self.full_connect1 = nn.Linear(320, 5120)
+        self.full_connect1 = nn.Linear(10240, 200)
         self.initalise_layer(self.full_connect1)
 
         # Second fully connected layer
-        # self.full_connect2 = nn.Linear(2304, 2304)
-        # self.initalise_layer(self.full_connect2)
+        self.full_connect2 = nn.Linear(200, 10)
+        self.initalise_layer(self.full_connect2)
+
+        # dropout
+        self.dropout = nn.Dropout(0.1)
+
+        # softmax
+
 
     #computes the forward pass through all network layers
     def forward(self, audios: torch.Tensor) -> torch.Tensor:
         x = self.conv1(audios)
+        print("Shape of x initially",x.shape)
         x = F.leaky_relu(x, 0.3)
         x = self.max_pool1(x)
+        print("After pooling",x.shape)
         # second convolution pipeline
         xb = self.conv1b(audios)
-        xbRelu = F.leaky_relu(0.3)
         xb = F.leaky_relu(xb,0.3)
-        xb = self.max_pool2(xb)
+        xb = self.max_pool1b(xb)
+        print("After pooling",xb.shape)
         x = torch.flatten(x, start_dim=1)
         xb = torch.flatten(xb,start_dim=1)
-        print(x.shape())
-        print(xb.shape())
+        print("After flattening",x.shape)
+        print("After flattening",xb.shape)
         # merge the two output
+        x = torch.cat((x,xb),1)
+        print("The merged array is", x.shape)
+        #fully connected layer
         x = self.full_connect1(x)
-        #split and maxout layer
-        x = x.reshape(x.size(0), 2304, 2)
-        x = torch.max(x, dim=2)[0]
-        #final fully connected layer
+        x = F.leaky_relu(x,0.3)
+        print("The size is", x.shape)
+
+        # #final fully connected layer
         x = self.full_connect2(x)
+
+        # dropout
+        x = self.dropout(x)
+        print(x)
+        print("The sum is",sum(x))
+
+        # softmax
+        x = F.softmax(x)
+        print("After softmax",x)
+        print("The sum is",sum(x))
+        print("The size is", x.shape)
         return x
 
     @staticmethod
@@ -74,6 +97,3 @@ class CNN(nn.Module):
             nn.init.constant_(layer.bias, 0.1)
         if hasattr(layer, "weight"):
             nn.init.normal_(layer.weight, mean=0.0, std=0.01)
-
- model = CNN(height=80, width=80, channels=1) 
- model.forward(dataset)
