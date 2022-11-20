@@ -3,6 +3,7 @@ import time
 from multiprocessing import cpu_count
 from typing import Union, NamedTuple
 import dataset
+import evaluation
 
 
 import torch
@@ -38,7 +39,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--epochs",
-    default=20,
+    default=100,
     type=int,
     help="Number of epochs (passes through the entire dataset) to train for",
 )
@@ -84,8 +85,8 @@ else:
 def main(args):
     transform = transforms.ToTensor()
     args.dataset_root.mkdir(parents=True, exist_ok=True)
-    train_dataset = dataset.GTZAN("data/train.pkl")
-    test_dataset = dataset.GTZAN("data/val.pkl")
+    train_dataset = dataset.GTZAN("train.pkl")
+    test_dataset = dataset.GTZAN("val.pkl")
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
@@ -102,13 +103,17 @@ def main(args):
     )
 
     model = CNN(height=80, width=80, channels=1, class_count=10)
-
-    ## TASK 8: Redefine the criterion to be softmax cross entropy
-    criterion = nn.L1Loss()
+    weights = torch.cat([p.view(-1) for n, p in model.named_parameters() if ".weight" in n])
+    l1_regularization = 0.0001 * torch.norm(weights, 1)
+    l1_regularization= torch.sum(l1_regularization)
+    l1_loss= l1_regularization.item()
     
+    ## TASK 8: Redefine the criterion to be softmax cross entropy
+    criterion = nn.CrossEntropyLoss()
+
 
     ## TASK 11: Define the optimizer
-    optimizer = torch.optim.SGD(model.parameters(),lr=args.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(),lr=args.learning_rate,betas=(0.9,0.999),eps=1e-08)
 
     log_dir = get_summary_writer_log_dir(args)
     print(f"Writing logs to {log_dir}")
@@ -117,7 +122,7 @@ def main(args):
             flush_secs=5
     )
     trainer = Trainer(
-        model, train_loader, test_loader, criterion, optimizer, weights,summary_writer, DEVICE
+        model, train_loader, test_loader, criterion, l1_loss, optimizer,summary_writer, DEVICE
     )
 
     trainer.train(
@@ -196,11 +201,11 @@ class CNN(nn.Module):
 
         #fully connected layer
         x = self.full_connect1(x)
-        x = F.leaky_relu(x,0.3)
         # print("The size is", x.shape)
 
         # #final fully connected layer
         x = self.full_connect2(x)
+        
 
         # dropout
         x = self.dropout(x)
@@ -208,13 +213,10 @@ class CNN(nn.Module):
         # print("The sum is",sum(x))
 
         # softmax
-        x = F.softmax(x)
+        x = F.softmax(x,dim=1)
         # print("After softmax",x)
         # print("The sum is",sum(x))
         # print("The size is", x.shape)
-
-
-
         return x
 
     @staticmethod
@@ -232,6 +234,7 @@ class Trainer:
         train_loader: DataLoader,
         val_loader: DataLoader,
         criterion: nn.Module,
+        l1_loss: float,
         optimizer: Optimizer,
         summary_writer: SummaryWriter,
         device: torch.device,
@@ -241,6 +244,7 @@ class Trainer:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.criterion = criterion
+        self.l1_loss = l1_loss
         self.optimizer = optimizer
         self.summary_writer = summary_writer
         self.step = 0
@@ -278,7 +282,8 @@ class Trainer:
 
                 ## TASK 9: Compute the loss using self.criterion and
                 ##         store it in a variable called `loss`
-                loss = self.criterion(logits,labels)
+                loss = self.criterion(logits,labels) 
+                loss += self.l1_loss
 
                 ## TASK 10: Compute the backward pass
                 loss.backward()
@@ -343,7 +348,6 @@ class Trainer:
         results = {"preds": [], "labels": []}
         total_loss = 0
         self.model.eval()
-
         # No need to track gradients for validation, we're not optimizing.
         with torch.no_grad():
             for index, sample in enumerate(self.val_loader):
@@ -355,7 +359,7 @@ class Trainer:
                 preds = logits.argmax(dim=-1).cpu().numpy()
                 results["preds"].extend(list(preds))
                 results["labels"].extend(list(labels.cpu().numpy()))
-
+        #evaluation.evaluate(preds,"val.pkl")
         accuracy = compute_accuracy(
             np.array(results["labels"]), np.array(results["preds"])
         )
