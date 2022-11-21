@@ -29,7 +29,7 @@ parser = argparse.ArgumentParser(
 default_dataset_dir = Path.home() / ".cache" / "torch" / "datasets"
 parser.add_argument("--dataset-root", default=default_dataset_dir)
 parser.add_argument("--log-dir", default=Path("logs"), type=Path)
-parser.add_argument("--learning-rate", default=1e-2, type=float, help="Learning rate")
+parser.add_argument("--learning-rate", default=0.00005, type=float, help="Learning rate")
 
 parser.add_argument(
     "--batch-size",
@@ -114,6 +114,7 @@ def main(args):
 
     ## TASK 11: Define the optimizer
     optimizer = torch.optim.Adam(model.parameters(),lr=args.learning_rate,betas=(0.9,0.999),eps=1e-08)
+    #optimizer = torch.optim.SGD(model.parameters(),lr=args.learning_rate)
 
     log_dir = get_summary_writer_log_dir(args)
     print(f"Writing logs to {log_dir}")
@@ -285,6 +286,7 @@ class Trainer:
                 loss = self.criterion(logits,labels) 
                 loss += self.l1_loss
 
+
                 ## TASK 10: Compute the backward pass
                 loss.backward()
 
@@ -355,6 +357,7 @@ class Trainer:
                 labels = sample[2].to(self.device)
                 logits = self.model(batch)
                 loss = self.criterion(logits, labels)
+                loss += self.l1_loss
                 total_loss += loss.item()
                 preds = logits.argmax(dim=-1).cpu().numpy()
                 results["preds"].extend(list(preds))
