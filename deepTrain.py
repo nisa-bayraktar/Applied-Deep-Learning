@@ -33,9 +33,9 @@ parser.add_argument("--learning-rate", default=0.00005, type=float, help="Learni
 
 parser.add_argument(
     "--batch-size",
-    default=50,
+    default=32,
     type=int,
-    help="Number of images within each mini-batch",
+    help="Number of audios within each mini-batch",
 )
 parser.add_argument(
     "--epochs",
@@ -70,7 +70,7 @@ parser.add_argument(
 )
 
 
-class ImageShape(NamedTuple):
+class AudioShape(NamedTuple):
     height: int
     width: int
     channels: int
@@ -135,7 +135,7 @@ def main(args):
 class CNN(nn.Module):
     def __init__(self, height: int, width: int, channels: int, class_count: int):
         super().__init__()
-        self.input_shape = ImageShape(height=height, width=width, channels=channels)
+        self.input_shape = AudioShape(height=height, width=width, channels=channels)
         self.class_count = class_count
 
         # First convolution layer
@@ -258,12 +258,14 @@ class CNN(nn.Module):
         self.full_connect1 = nn.Linear(5120, 200)
         self.initialise_layer(self.full_connect1)
 
+        #dropout
+        self.dropout = nn.Dropout(0.25)
+
         # Second fully connected layer
         self.full_connect2 = nn.Linear(200,10)
         self.initialise_layer(self.full_connect2)
 
-        #dropout
-        self.dropout = nn.Dropout(0.25)
+        
 
 
 
@@ -308,21 +310,18 @@ class CNN(nn.Module):
         x = self.full_connect1(x)
         # print("The size is", x.shape)
 
+        # dropout
+        x = self.dropout(x)
+
         # #final fully connected layer
         x = F.leaky_relu(x,0.3)
         x = self.full_connect2(x)
         
-
-        # dropout
-        x = self.dropout(x)
         # print(x)
         # print("The sum is",sum(x))
 
-        # softmax
-        x = F.softmax(x,dim=1)
         # print("After softmax",x)
         # print("The sum is",sum(x))
-        print("The size is", x.shape)
         return x
 
     @staticmethod
@@ -331,6 +330,7 @@ class CNN(nn.Module):
             nn.init.zeros_(layer.bias)
         if hasattr(layer, "weight"):
             nn.init.kaiming_normal_(layer.weight)
+
 
 
 class Trainer:
@@ -371,15 +371,13 @@ class Trainer:
                 labels = labels.to(self.device)
                 data_load_end_time = time.time()
 
-
-
                 logits = self.model.forward(batch)
             
 
                 ## loss
                 weights = torch.cat([p.view(-1) for n, p in self.model.named_parameters() if ".weight" in n])
-
-                l1_loss = 0.00001 * torch.sum(torch.norm(weights,1))
+                
+                l1_loss = 0.00001 * torch.norm(weights,1)
                 loss = self.criterion(logits,labels) + l1_loss
 
                 ## TASK 10: Compute the backward pass
@@ -442,7 +440,7 @@ class Trainer:
         )
 
     def validate(self):
-        results = {"preds": [], "labels": []}
+        results = {"preds": []}
         total_loss = 0
         self.model.eval()
         # No need to track gradients for validation, we're not optimizing.
@@ -453,26 +451,8 @@ class Trainer:
                 logits = self.model(batch)
                 loss = self.criterion(logits, labels)
                 total_loss += loss.item()
-                preds = logits.argmax(dim=-1).cpu().numpy()
-                results["preds"].extend(list(preds))
-                results["labels"].extend(list(labels.cpu().numpy()))
-        #evaluation.evaluate(preds,"val.pkl")
-        accuracy = compute_accuracy(
-            np.array(results["labels"]), np.array(results["preds"])
-        )
-        average_loss = total_loss / len(self.val_loader)
-
-        self.summary_writer.add_scalars(
-                "accuracy",
-                {"test": accuracy},
-                self.step
-        )
-        self.summary_writer.add_scalars(
-                "loss",
-                {"test": average_loss},
-                self.step
-        )
-        print(f"validation loss: {average_loss:.5f}, accuracy: {accuracy * 100:2.2f}")
+                results["preds"].extend(list(logits))
+        evaluation.evaluate(results["preds"],"val.pkl")
 
 
 def compute_accuracy(
