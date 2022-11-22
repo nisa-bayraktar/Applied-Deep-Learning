@@ -33,7 +33,7 @@ parser.add_argument("--learning-rate", default=0.00005, type=float, help="Learni
 
 parser.add_argument(
     "--batch-size",
-    default=128,
+    default=32,
     type=int,
     help="Number of images within each mini-batch",
 )
@@ -70,7 +70,7 @@ parser.add_argument(
 )
 
 
-class ImageShape(NamedTuple):
+class AudioShape(NamedTuple):
     height: int
     width: int
     channels: int
@@ -103,10 +103,6 @@ def main(args):
     )
 
     model = CNN(height=80, width=80, channels=1, class_count=10)
-    weights = torch.cat([p.view(-1) for n, p in model.named_parameters() if ".weight" in n])
-    l1_regularization = 0.0001 * torch.norm(weights, 1)
-    l1_regularization= torch.sum(l1_regularization)
-    l1_loss= l1_regularization.item()
     
     ## TASK 8: Redefine the criterion to be softmax cross entropy
     criterion = nn.CrossEntropyLoss()
@@ -114,7 +110,6 @@ def main(args):
 
     ## TASK 11: Define the optimizer
     optimizer = torch.optim.Adam(model.parameters(),lr=args.learning_rate,betas=(0.9,0.999),eps=1e-08)
-    #optimizer = torch.optim.SGD(model.parameters(),lr=args.learning_rate)
 
     log_dir = get_summary_writer_log_dir(args)
     print(f"Writing logs to {log_dir}")
@@ -123,7 +118,7 @@ def main(args):
             flush_secs=5
     )
     trainer = Trainer(
-        model, train_loader, test_loader, criterion, l1_loss, optimizer,summary_writer, DEVICE
+        model, train_loader, test_loader, criterion, optimizer,summary_writer, DEVICE
     )
 
     trainer.train(
@@ -139,7 +134,7 @@ def main(args):
 class CNN(nn.Module):
     def __init__(self, height: int, width: int, channels: int, class_count: int):
         super().__init__()
-        self.input_shape = ImageShape(height=height, width=width, channels=channels)
+        self.input_shape = AudioShape(height=height, width=width, channels=channels)
         self.class_count = class_count
 
         # First convolution layer
@@ -202,14 +197,13 @@ class CNN(nn.Module):
 
         #fully connected layer
         x = self.full_connect1(x)
+        x = F.leaky_relu(x,0.3)
         # print("The size is", x.shape)
-
+        
+        x = self.dropout(x)
         # #final fully connected layer
         x = self.full_connect2(x)
         
-
-        # dropout
-        x = self.dropout(x)
         # print(x)
         # print("The sum is",sum(x))
 
@@ -235,7 +229,6 @@ class Trainer:
         train_loader: DataLoader,
         val_loader: DataLoader,
         criterion: nn.Module,
-        l1_loss: float,
         optimizer: Optimizer,
         summary_writer: SummaryWriter,
         device: torch.device,
@@ -245,7 +238,6 @@ class Trainer:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.criterion = criterion
-        self.l1_loss = l1_loss
         self.optimizer = optimizer
         self.summary_writer = summary_writer
         self.step = 0
@@ -263,29 +255,19 @@ class Trainer:
             self.model.train()
             data_load_start_time = time.time()
 
-            for index, sample in enumerate(self.train_loader):
-                batch = sample[1].to(self.device)
-                labels = sample[2].to(self.device)
+            for _, batch, labels, _ in (self.train_loader):
+                batch = batch.to(self.device)
+                labels = labels.to(self.device)
                 data_load_end_time = time.time()
 
-
-                ## TASK 1: Compute the forward pass of the model, print the output shape
-                ##         and quit the program
-                #output = self.model.forward(batch)
-                #print(output.shape)
-                #import sys; sys.exit(1)
-
-
-                ## TASK 7: Rename `output` to `logits`, remove the output shape printing
-                ##         and get rid of the `import sys; sys.exit(1)`
                 logits = self.model.forward(batch)
             
 
-                ## TASK 9: Compute the loss using self.criterion and
-                ##         store it in a variable called `loss`
-                loss = self.criterion(logits,labels) 
-                loss += self.l1_loss
-
+                ## loss
+                weights = torch.cat([p.view(-1) for n, p in self.model.named_parameters() if ".weight" in n])
+                
+                l1_loss = 0.00001 * (torch.norm(weights,1))
+                loss = self.criterion(logits,labels) + l1_loss
 
                 ## TASK 10: Compute the backward pass
                 loss.backward()
@@ -347,38 +329,19 @@ class Trainer:
         )
 
     def validate(self):
-        results = {"preds": [], "labels": []}
+        results = {"preds": []}
         total_loss = 0
         self.model.eval()
         # No need to track gradients for validation, we're not optimizing.
         with torch.no_grad():
-            for index, sample in enumerate(self.val_loader):
-                batch = sample[1].to(self.device)
-                labels = sample[2].to(self.device)
+            for _ ,batch,labels, _ in (self.val_loader):
+                batch = batch.to(self.device)
+                labels = labels.to(self.device)
                 logits = self.model(batch)
                 loss = self.criterion(logits, labels)
-                loss += self.l1_loss
                 total_loss += loss.item()
-                preds = logits.argmax(dim=-1).cpu().numpy()
-                results["preds"].extend(list(preds))
-                results["labels"].extend(list(labels.cpu().numpy()))
-        #evaluation.evaluate(preds,"val.pkl")
-        accuracy = compute_accuracy(
-            np.array(results["labels"]), np.array(results["preds"])
-        )
-        average_loss = total_loss / len(self.val_loader)
-
-        self.summary_writer.add_scalars(
-                "accuracy",
-                {"test": accuracy},
-                self.step
-        )
-        self.summary_writer.add_scalars(
-                "loss",
-                {"test": average_loss},
-                self.step
-        )
-        print(f"validation loss: {average_loss:.5f}, accuracy: {accuracy * 100:2.2f}")
+                results["preds"].extend(list(logits))
+        evaluation.evaluate(results["preds"],"val.pkl")
 
 
 def compute_accuracy(
