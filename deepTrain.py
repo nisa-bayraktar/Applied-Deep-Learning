@@ -33,7 +33,7 @@ parser.add_argument("--learning-rate", default=0.00005, type=float, help="Learni
 
 parser.add_argument(
     "--batch-size",
-    default=32,
+    default=64,
     type=int,
     help="Number of audios within each mini-batch",
 )
