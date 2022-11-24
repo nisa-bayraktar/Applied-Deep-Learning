@@ -4,6 +4,10 @@ from multiprocessing import cpu_count
 from typing import Union, NamedTuple
 import dataset
 import evaluation
+from sklearn.metrics import confusion_matrix
+import seaborn as sn
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 import torch
@@ -207,11 +211,6 @@ class CNN(nn.Module):
         # print(x)
         # print("The sum is",sum(x))
 
-        # softmax
-        x = F.softmax(x,dim=1)
-        # print("After softmax",x)
-        # print("The sum is",sum(x))
-        # print("The size is", x.shape)
         return x
 
     @staticmethod
@@ -266,7 +265,7 @@ class Trainer:
                 ## loss
                 weights = torch.cat([p.view(-1) for n, p in self.model.named_parameters() if ".weight" in n])
                 
-                l1_loss = 0.00001 * (torch.norm(weights,1))
+                l1_loss = 0.00001 * torch.norm(weights,1)
                 loss = self.criterion(logits,labels) + l1_loss
 
                 ## TASK 10: Compute the backward pass
@@ -329,19 +328,35 @@ class Trainer:
         )
 
     def validate(self):
-        results = {"preds": []}
+        preds = []
         total_loss = 0
         self.model.eval()
+        labels1=[]
         # No need to track gradients for validation, we're not optimizing.
         with torch.no_grad():
             for _ ,batch,labels, _ in (self.val_loader):
                 batch = batch.to(self.device)
                 labels = labels.to(self.device)
+                #labels1.extend(list(labels))
                 logits = self.model(batch)
                 loss = self.criterion(logits, labels)
                 total_loss += loss.item()
-                results["preds"].extend(list(logits))
-        evaluation.evaluate(results["preds"],"val.pkl")
+                preds.extend(list(logits))
+        evaluation.evaluate(preds, "val.pkl")
+
+        # classes = ('blues', 'classical', 'country', 'disco', 'hiphop',
+        # 'jazz', 'metal', 'pop', 'reggae', 'rock')
+
+        # # Build confusion matrix
+        # labels1= labels1.detach().cpu().numpy()
+        # preds = preds.detach().cpu().numpy()
+
+        # cf_matrix = confusion_matrix(labels1, preds)
+        # df_cm = pd.DataFrame(cf_matrix/np.sum(cf_matrix) *10, index = [i for i in classes],
+        #                     columns = [i for i in classes])
+        # plt.figure(figsize = (12,7))
+        # sn.heatmap(df_cm, annot=True)
+        # plt.savefig('output.png')
 
 
 def compute_accuracy(
