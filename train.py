@@ -4,6 +4,10 @@ from multiprocessing import cpu_count
 from typing import Union, NamedTuple
 import dataset
 import evaluation
+from sklearn.metrics import confusion_matrix
+import seaborn as sn
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 import torch
@@ -203,15 +207,7 @@ class CNN(nn.Module):
         x = self.dropout(x)
         # #final fully connected layer
         x = self.full_connect2(x)
-        
-        # print(x)
-        # print("The sum is",sum(x))
-
-        # softmax
-        x = F.softmax(x,dim=1)
-        # print("After softmax",x)
-        # print("The sum is",sum(x))
-        # print("The size is", x.shape)
+    
         return x
 
     @staticmethod
@@ -266,7 +262,7 @@ class Trainer:
                 ## loss
                 weights = torch.cat([p.view(-1) for n, p in self.model.named_parameters() if ".weight" in n])
                 
-                l1_loss = 0.00001 * (torch.norm(weights,1))
+                l1_loss = 0.00001 * torch.norm(weights,1)
                 loss = self.criterion(logits,labels) + l1_loss
 
                 ## TASK 10: Compute the backward pass
@@ -329,7 +325,7 @@ class Trainer:
         )
 
     def validate(self):
-        results = {"preds": []}
+        preds = []
         total_loss = 0
         self.model.eval()
         # No need to track gradients for validation, we're not optimizing.
@@ -340,10 +336,22 @@ class Trainer:
                 logits = self.model(batch)
                 loss = self.criterion(logits, labels)
                 total_loss += loss.item()
-                results["preds"].extend(list(logits))
-        evaluation.evaluate(results["preds"],"val.pkl")
+                preds.extend(list(logits))
+        accuracy = evaluation.evaluate(preds, "val.pkl")
+        
+        avg_loss=total_loss/len(self.val_loader)
 
-
+        self.summary_writer.add_scalars(
+                "accuracy",
+                {"test": accuracy/100},
+                self.step
+        )
+        self.summary_writer.add_scalars(
+                "loss",
+                {"test": avg_loss},
+                self.step
+        )
+        
 def compute_accuracy(
     labels: Union[torch.Tensor, np.ndarray], preds: Union[torch.Tensor, np.ndarray]
 ) -> float:
